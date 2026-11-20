@@ -1,0 +1,11 @@
+cmd_vel_mux_node:
+  ros__parameters:
+    inputs: [teleop/cmd_vel, odom_extension/cmd_vel, pid_extension/cmd_vel, nav2/cmd_vel]   # highest priority first; teleop = manual override (framework_bringup teleop)
+    output: cmd_vel
+    stamped: false
+    timeout_sec: 0.5       # watchdog: no fresh input -> zero Twist, then silence
+    max_linear: 0.3        # hard clamp, m/s
+    max_angular: 0.8       # hard clamp, rad/s
+    safety_events_enabled: true   # bumper/cliff latch the stop; clear with the safety_reset service
+    bumper_topic: events/bumper
+    cliff_topic: events/cliff

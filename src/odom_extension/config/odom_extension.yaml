@@ -1,0 +1,6 @@
+extension: odom_extension
+nodes:
+  NavigateTo: {category: Action, required: [x, y], optional: [yaw, frame, tolerance, speed], description: "Drive to a pose in the odometry frame"}
+  DriveDistance: {category: Action, required: [meters], optional: [speed], description: "Drive straight a distance (negative = reverse)"}
+  RotateBy: {category: Action, required: [radians], optional: [speed], description: "Rotate in place by an angle"}
+  IsAtGoal: {category: Condition, required: [x, y], optional: [tolerance], description: "Odometry is within tolerance of a point"}

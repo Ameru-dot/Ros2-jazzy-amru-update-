@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>amru_update_config</name>
+  <version>0.1.0</version>
+  <description>Amru Update parameter folder (places, macros, LLM knowledge) and the simulation launch</description>
+  <maintainer email="amruafif0306@gmail.com">Amru</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>framework_bringup</exec_depend>
+  <exec_depend>tts_pipeline</exec_depend>
+  <exec_depend>amru_update_extension</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

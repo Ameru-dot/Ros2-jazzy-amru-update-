@@ -1,0 +1,311 @@
+{
+ "note": "Each run is scored on its own 200 held-out rows against the rule-based generator (synthetic specs). Catalogs differ between runs, so bars are not strictly comparable. v4 re-scored on the same 200 rows under today's stricter validator (Parallel on one extension is rejected): 0.970 valid / 0.935 exact, so its 0.995 above predates that rule. 5 of the 200 reference trees now fail that rule, which caps v5's valid at 0.975.",
+ "runs": [
+  {
+   "label": "v1",
+   "rows": 2865,
+   "catalog": "early catalog",
+   "valid": 0.99,
+   "exact": 0.985,
+   "max_len": 1024
+  },
+  {
+   "label": "v2",
+   "rows": 472,
+   "catalog": "42 nodes",
+   "valid": 0.895,
+   "exact": 0.795,
+   "max_len": 512
+  },
+  {
+   "label": "v3",
+   "rows": 2392,
+   "catalog": "42 nodes",
+   "valid": 0.975,
+   "exact": 0.915,
+   "max_len": 768
+  },
+  {
+   "label": "v4",
+   "rows": 2835,
+   "catalog": "45 nodes + Parallel/Repeat",
+   "valid": 0.995,
+   "exact": 0.935,
+   "max_len": 768
+  },
+  {
+   "label": "v5",
+   "rows": 860,
+   "catalog": "46 nodes, current validator",
+   "valid": 0.975,
+   "exact": 0.98,
+   "max_len": 2560
+  }
+ ],
+ "loss_v4": {
+  "rows": 2835,
+  "points": [
+   [
+    50,
+    0.0449
+   ],
+   [
+    100,
+    0.003
+   ],
+   [
+    150,
+    0.0001
+   ],
+   [
+    200,
+    0.005
+   ],
+   [
+    250,
+    0.006
+   ],
+   [
+    300,
+    0.0001
+   ],
+   [
+    350,
+    0.0
+   ],
+   [
+    400,
+    0.0402
+   ],
+   [
+    450,
+    0.0001
+   ],
+   [
+    500,
+    0.0
+   ],
+   [
+    550,
+    0.0
+   ],
+   [
+    600,
+    0.0
+   ],
+   [
+    650,
+    0.0008
+   ],
+   [
+    700,
+    0.0
+   ],
+   [
+    750,
+    0.0929
+   ],
+   [
+    800,
+    0.0001
+   ],
+   [
+    850,
+    0.0
+   ],
+   [
+    900,
+    0.0
+   ],
+   [
+    950,
+    0.002
+   ],
+   [
+    1000,
+    0.0
+   ],
+   [
+    1050,
+    0.0
+   ],
+   [
+    1100,
+    0.0989
+   ],
+   [
+    1150,
+    0.026
+   ],
+   [
+    1200,
+    0.0
+   ],
+   [
+    1250,
+    0.0
+   ],
+   [
+    1300,
+    0.0
+   ],
+   [
+    1350,
+    0.0
+   ],
+   [
+    1400,
+    0.0
+   ],
+   [
+    1450,
+    0.0
+   ],
+   [
+    1500,
+    0.04
+   ],
+   [
+    1550,
+    0.0
+   ],
+   [
+    1600,
+    0.0
+   ],
+   [
+    1650,
+    0.0
+   ],
+   [
+    1700,
+    0.0
+   ],
+   [
+    1750,
+    0.0
+   ],
+   [
+    1800,
+    0.0
+   ],
+   [
+    1850,
+    0.0188
+   ],
+   [
+    1900,
+    0.0
+   ],
+   [
+    1950,
+    0.0002
+   ],
+   [
+    2000,
+    0.0
+   ],
+   [
+    2050,
+    0.0
+   ],
+   [
+    2100,
+    0.0
+   ],
+   [
+    2150,
+    0.0
+   ],
+   [
+    2200,
+    0.004
+   ],
+   [
+    2250,
+    0.0
+   ],
+   [
+    2300,
+    0.0
+   ],
+   [
+    2350,
+    0.0
+   ],
+   [
+    2400,
+    0.0011
+   ],
+   [
+    2450,
+    0.0
+   ],
+   [
+    2500,
+    0.0
+   ],
+   [
+    2550,
+    0.0001
+   ],
+   [
+    2600,
+    0.0003
+   ],
+   [
+    2650,
+    0.0
+   ],
+   [
+    2700,
+    0.0005
+   ],
+   [
+    2750,
+    0.0
+   ],
+   [
+    2800,
+    0.0
+   ]
+  ]
+ },
+ "heavy_eval": {
+  "note": "n = 20 held-out rows per set, generated with the heavy / max profiles (bt_slm make_bt_dataset --profile); NOT comparable with the 200-row bars above",
+  "sets": {
+   "normal": {
+    "v4": [
+     1.0,
+     0.9
+    ],
+    "v5": [
+     1.0,
+     1.0
+    ]
+   },
+   "heavy": {
+    "v4": [
+     0.55,
+     0.35
+    ],
+    "v5": [
+     0.9,
+     0.7
+    ]
+   },
+   "max": {
+    "v4": [
+     0.8,
+     0.5
+    ],
+    "v5": [
+     0.9,
+     0.8
+    ]
+   }
+  },
+  "format": "[valid, exact]",
+  "v5": "continued from v4: 150 normal + 500 heavy + 250 max rows (860 trained, max_len 2560), 1 epoch, Adafactor lr 2e-5, gradient checkpointing, about 40 minutes on a 4 GB GPU"
+ }
+}

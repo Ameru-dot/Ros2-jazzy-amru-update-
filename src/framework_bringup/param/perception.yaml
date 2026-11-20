@@ -1,0 +1,72 @@
+# Central parameters. Precedence (low -> high): package defaults < this file < launch argument.
+# Edit freely; framework_bringup is installed with symlinks, so no rebuild is needed.
+# Use another folder with:  params_dir:=/path/to/my_param
+# Keys must match a declared parameter of the node (check with: ros2 run framework_bringup check_params).
+
+object_detection_node:
+  ros__parameters:
+    model: yolo11n.pt
+    openvino: false
+    conf: 0.4
+    device: ""              # "" = auto, "cpu", "0" (GPU)
+    image_topic: ""         # "" = open the webcam
+    raw_topic: /camera/image_raw   # also publish the raw webcam frames (person_detection reads them)
+    camera_index: 0
+    rate_hz: 30.0
+    show: false
+    publish_image: true
+    frame_id: camera
+
+person_detection_node:
+  ros__parameters:
+    model: yolo11n-pose.pt  # yolo11n.pt for boxes only
+    openvino: false
+    conf: 0.4
+    device: ""
+    image_topic: /camera/image_raw   # raw webcam frames from object_detection_node (raw_topic); "" = open the webcam here
+    image_out: detections/person_image
+    camera_index: 0
+    rate_hz: 30.0
+    show: false
+    publish_image: true
+    frame_id: camera
+    track: true
+
+face_recognition_node:
+  ros__parameters:
+    model: yolo26n-face.pt  # user-supplied face weights (YOLO26n, 5 landmarks); in the repo root
+    openvino: false
+    conf: 0.4
+    device: ""
+    image_topic: /camera/image_raw   # raw webcam frames (object_detection_node raw_topic); "" = open the webcam here
+    image_out: detections/face_image
+    camera_index: 0
+    rate_hz: 30.0
+    show: false
+    publish_image: true
+    frame_id: camera
+    embed_model: yolo11n-cls.pt
+    gallery_dir: faces      # one <name>.npy per identity
+    threshold: 0.6          # cosine similarity needed to name a face
+    publish_embedding: true # required by the BT node ExtractFaceFeature
+    enroll_max_age_sec: 2.0
+
+auto_register_node:         # unknown face in view -> ask who it is and enrol it (macro register_person); runs with enable_face
+  ros__parameters:
+    enabled: true
+    unknown_sec: 2.5        # the biggest face must stay unknown this long
+    gap_sec: 0.6            # a missed frame or two does not reset the timer
+    cooldown_sec: 60.0      # after asking once, stay quiet this long
+    min_conf: 0.6
+    min_width_px: 60.0      # ignore small (far away) faces
+    startup_grace_sec: 10.0 # wait this long after start, and for the tts/speak service, before asking anyone
+
+person_depth_node:          # optional: persons + aligned depth -> persons_ranged (distance_m)
+  ros__parameters:
+    depth_topic: /camera/camera/aligned_depth_to_color/image_raw
+    persons_in: persons
+    persons_out: persons_ranged   # point pid_extension persons_topic at this for metric FollowTarget
+    region_frac: 0.4
+    min_m: 0.2
+    max_m: 8.0
+    max_age_sec: 0.25

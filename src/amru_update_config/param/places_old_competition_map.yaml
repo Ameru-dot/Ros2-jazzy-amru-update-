@@ -1,0 +1,10 @@
+# Real-robot places on the OLD competition map, from the previous ROS 1 (Noetic) robot code.
+# Orientation quaternions (z, w) were converted to yaw = 2 * atan2(z, w).
+# To use: replace places.yaml with this file and run navigation with the same map.
+# A new ROS 2 map will usually differ from the old one, so these poses will likely need to be re-measured.
+places:
+  home: {x: 0.000, y: 0.000, yaw: 0.000}
+  registration_counter: {x: -2.032, y: 1.678, yaw: -0.134}
+  vaccination_point: {x: -4.070, y: -2.278, yaw: 0.649}
+  treatment_bed: {x: -7.624, y: -1.049, yaw: 0.502}
+  waiting_area: {x: -4.127, y: 1.062, yaw: 0.666}

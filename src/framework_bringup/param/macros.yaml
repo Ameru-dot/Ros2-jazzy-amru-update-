@@ -1,0 +1,481 @@
+# Macros: named step lists the LLM can call as {"macro": "<name>", "args": {...}} instead of writing
+# every node (fewer tokens = faster plans). Expanded in plain code before the SLM / rule generator;
+# Tests expand and validate every macro here against the real node catalog
+# (src/bt_validator/test/test_macro_library.py), so a typo in a node or port fails the build.
+#   params: name -> {required: true | default: "..."}   (values are strings; ${name} in any value)
+#   example_args: used by the test. A macro may call other macros (max depth 4, no cycles).
+# Whitelist: the ONLY macros a task spec (LLM / SLM) may call; the validator's catalog, the LLM's JSON schema and the
+# orchestrator all honour it. Macros may still call any macro inside their own steps. Remove a name to hide it.
+whitelist:
+  - say
+  - go_to_place
+  - go_and_say
+  - patrol
+  - turn_around
+  - greet_person
+  - approach_person
+  - wave_back
+  - report_object
+  - return_home
+  - look_around
+  - find_person
+  - find_object
+  - go_find_object
+  - go_find_person
+  - go_find_and_say
+  - meet_and_remember
+  - follow_person
+  - look_at_person
+  - acknowledge_person
+  - meet_guest
+  - register_person
+  - introduce_guest
+  - patrol_laps
+  - wait_for_doorbell
+  - offer_seat
+  - receive_guest
+  - hric_round
+  - wander
+  - wander_until_person
+  - scout_room
+  - describe_person
+  - announce_and_go
+  - guide_to
+  - escort_person_to
+  - wait_for_wave
+  - stop_and_wait
+  - ask_and_repeat
+
+macros:
+  say:
+    description: "Say one short sentence"
+    params: {text: {required: true}}
+    example_args: {text: "Hello"}
+    steps:
+      - {node: Speak, ports: {text: "${text}"}}
+
+  go_to_place:
+    description: "Drive to a named place from places.yaml; if blocked, clear the costmaps and try once more"
+    params: {place: {required: true}}
+    example_args: {place: door}
+    steps:
+      - group: Fallback
+        steps:
+          - {node: NavigateToPlace, ports: {place: "${place}"}}
+          - group: Sequence
+            steps:
+              - {node: ClearCostmaps}
+              - {node: NavigateToPlace, ports: {place: "${place}"}}
+
+  go_and_say:
+    description: "Drive to a named place, then say a sentence there"
+    params: {place: {required: true}, text: {required: true}}
+    example_args: {place: door, text: "I have arrived"}
+    steps:
+      - {macro: go_to_place, args: {place: "${place}"}}
+      - {macro: say, args: {text: "${text}"}}
+
+  patrol:
+    description: "Visit two named places in order"
+    params: {first: {required: true}, second: {required: true}}
+    example_args: {first: left_room, second: right_room}
+    steps:
+      - {macro: go_to_place, args: {place: "${first}"}}
+      - {macro: go_to_place, args: {place: "${second}"}}
+
+  turn_around:
+    description: "Rotate in place by half a turn"
+    steps:
+      - {node: RotateBy, ports: {radians: "3.14"}}
+
+  greet_person:
+    description: "Wait for a person, recognise the face and greet them by name (unknown -> there); keeps trying about 30 rounds"
+    steps:
+      - group: Fallback
+        retry: 30
+        steps:
+          - group: Sequence
+            steps:
+              - {node: DetectPerson, ports: {min_conf: "0.5"}}
+              - {node: ExtractFaceFeature, ports: {min_conf: "0.5", out_identity: "{who}", out_similarity: "{sim}"}}
+              - {node: Speak, ports: {text: "Hello {person}", person: "{who}"}}
+          - group: Sequence
+            steps:
+              - {node: Sleep, ports: {msec: "200"}}
+              - {node: AlwaysFailure}
+
+  approach_person:
+    description: "Find a person and walk up to them, stopping at a stand-off distance in metres (min 0.5)"
+    params: {distance: {default: "1.0"}}
+    steps:
+      - {node: DetectPerson}
+      - {node: FollowTarget, ports: {approach: "true", distance: "${distance}"}}
+
+  wave_back:
+    description: "If a person is waving, say hello to them"
+    steps:
+      - {node: IsPersonWaving}
+      - {node: Speak, ports: {text: "Hello!"}}
+
+  report_object:
+    description: "Do you see a <object>? Look for an object (label from the detector's list), turning once if not seen, and say what was found"
+    params: {label: {required: true}}
+    example_args: {label: person}
+    steps:
+      - group: Fallback
+        steps:
+          - group: Sequence
+            steps:
+              - {node: DetectObject, ports: {label: "${label}"}}
+              - {node: Speak, ports: {text: "I can see a ${label}"}}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: DetectObject, ports: {label: "${label}"}}
+              - {node: Speak, ports: {text: "I can see a ${label} now"}}
+          - {node: Speak, ports: {text: "I cannot see a ${label}"}}
+
+  # ---- batch A: built only from nodes that exist today (see notes/MACROS_PLAN.md) ----
+  return_home:
+    description: "Drive back to the start place (only when asked to go home or return)"
+    steps:
+      - {macro: go_to_place, args: {place: start}}
+
+  look_around:
+    description: "Turn a full circle in four quarter turns (no detection, use before find_*)"
+    steps:
+      - {node: RotateBy, ports: {radians: "1.57"}}
+      - {node: RotateBy, ports: {radians: "1.57"}}
+      - {node: RotateBy, ports: {radians: "1.57"}}
+      - {node: RotateBy, ports: {radians: "1.57"}}
+
+  find_person:
+    description: "Look for a person, turning up to three quarter turns; says so and FAILS if nobody is seen"
+    steps:
+      - group: Fallback
+        steps:
+          - {node: DetectPerson}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: DetectPerson}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: DetectPerson}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: DetectPerson}
+          - group: Sequence
+            steps:
+              - {node: Speak, ports: {text: "I cannot find anyone"}}
+              - {node: AlwaysFailure}
+
+  find_object:
+    description: "Only look for an object (detector label), turning up to three quarter turns; says so and FAILS if not seen; it never picks up or carries"
+    params: {label: {required: true}}
+    example_args: {label: person}
+    steps:
+      - group: Fallback
+        steps:
+          - {node: DetectObject, ports: {label: "${label}"}}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: DetectObject, ports: {label: "${label}"}}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: DetectObject, ports: {label: "${label}"}}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: DetectObject, ports: {label: "${label}"}}
+          - group: Sequence
+            steps:
+              - {node: Speak, ports: {text: "I cannot find the ${label}"}}
+              - {node: AlwaysFailure}
+
+  go_find_object:
+    description: "Go to a named place and only look for an object there (never picks up, takes or brings it)"
+    params: {place: {required: true}, label: {required: true}}
+    example_args: {place: door, label: person}
+    steps:
+      - {macro: go_to_place, args: {place: "${place}"}}
+      - {macro: find_object, args: {label: "${label}"}}
+
+  go_find_person:
+    description: "Go to a named place and look for a person there"
+    params: {place: {required: true}}
+    example_args: {place: door}
+    steps:
+      - {macro: go_to_place, args: {place: "${place}"}}
+      - {macro: find_person}
+
+  go_find_and_say:
+    description: "Go to a place, find a person, walk up to them and say a sentence"
+    params: {place: {required: true}, text: {required: true}}
+    example_args: {place: door, text: "Hello"}
+    steps:
+      - {macro: go_find_person, args: {place: "${place}"}}
+      - {macro: approach_person}
+      - {macro: say, args: {text: "${text}"}}
+
+  meet_and_remember:
+    description: "Walk up to a person, store their face under a name (A-Z a-z 0-9 _ -) and greet them"
+    params: {name: {required: true}}
+    example_args: {name: alice}
+    steps:
+      - {macro: approach_person}
+      - {node: EnrollFace, ports: {person: "${name}"}}
+      - {node: Speak, ports: {text: "Nice to meet you ${name}"}}
+
+  follow_person:
+    description: "Follow me / come with me / walk behind a person: find a person and follow them at a distance in metres (min 0.5); if the person is lost, turns a little, looks again and retries up to 3 times"
+    params: {distance: {default: "1.0"}}
+    steps:
+      - {macro: find_person}
+      - group: Fallback
+        retry: 3
+        steps:
+          - {node: FollowTarget, ports: {approach: "true", distance: "${distance}", timeout_ms: "60000"}}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "0.8"}}
+              - {node: DetectPerson}
+              - {node: FollowTarget, ports: {approach: "true", distance: "${distance}", timeout_ms: "60000"}}
+
+  look_at_person:
+    description: "Turn the base until a visible person is centred in the camera (eye contact; no driving)"
+    steps:
+      - {node: DetectPerson}
+      - {node: FollowTarget, ports: {timeout_ms: "5000"}}
+
+  acknowledge_person:
+    description: "Find a person, turn to face them and say hello (a greeting only: it does not follow or move with them)"
+    steps:
+      - {macro: find_person}
+      - {macro: look_at_person}
+      - {macro: say, args: {text: "Hello, I see you"}}
+
+  guide_to:
+    description: "Tell people to follow, drive to a named place, announce arrival"
+    params: {place: {required: true}}
+    example_args: {place: door}
+    steps:
+      - {macro: say, args: {text: "Please follow me"}}
+      - {macro: go_to_place, args: {place: "${place}"}}
+      - {macro: say, args: {text: "We have arrived"}}
+
+  escort_person_to:
+    description: "Find a person and guide them to a named place"
+    params: {place: {required: true}}
+    example_args: {place: door}
+    steps:
+      - {macro: find_person}
+      - {macro: guide_to, args: {place: "${place}"}}
+
+  wait_for_wave:
+    description: "Wait (about 30 rounds) until someone waves, then say hello"
+    steps:
+      - group: Fallback
+        retry: 30
+        steps:
+          - group: Sequence
+            steps:
+              - {node: IsPersonWaving}
+              - {node: Speak, ports: {text: "Hello!"}}
+          - group: Sequence
+            steps:
+              - {node: Sleep, ports: {msec: "200"}}
+              - {node: AlwaysFailure}
+
+  stop_and_wait:
+    description: "Do nothing for a number of milliseconds"
+    params: {msec: {default: "2000"}}
+    steps:
+      - {node: Sleep, ports: {msec: "${msec}"}}
+
+  ask_and_repeat:
+    description: "Ask a question out loud, listen for one answer (10 s) and say it back; fails if nobody answers"
+    params: {question: {required: true}}
+    example_args: {question: "What is your name?"}
+    steps:
+      - {macro: say, args: {text: "${question}"}}
+      - {node: WaitForTranscript, ports: {out_text: "{answer}"}}
+      - {node: Speak, ports: {text: "I heard {person}", person: "{answer}"}}
+
+  meet_guest:
+    description: "Ask a guest their name and favourite drink, remember both under a slot (guest1, guest2...) and enrol the face; retries each question twice"
+    params: {slot: {default: guest1}}
+    example_args: {slot: guest1}
+    steps:
+      - group: Fallback
+        retry: 2
+        steps:
+          - group: Sequence
+            steps:
+              - {node: Speak, ports: {text: "Hello, what is your name?"}}
+              - {node: WaitForTranscript, ports: {out_text: "{${slot}_heard}"}}
+              - {node: ExtractAnswer, ports: {kind: name, text: "{${slot}_heard}", out_value: "{${slot}_name}"}}
+          - {node: Speak, ports: {text: "Sorry, please say only your name"}}
+      - {node: Speak, ports: {text: "Nice to meet you {person}", person: "{${slot}_name}"}}
+      - group: Fallback
+        retry: 2
+        steps:
+          - group: Sequence
+            steps:
+              - {node: Speak, ports: {text: "What is your favourite drink?"}}
+              - {node: WaitForTranscript, ports: {out_text: "{${slot}_heard}"}}
+              - {node: ExtractAnswer, ports: {kind: drink, text: "{${slot}_heard}", out_value: "{${slot}_drink}"}}
+          - {node: Speak, ports: {text: "Sorry, please say only the drink"}}
+      - {node: EnrollFace, ports: {person: "{${slot}_name}"}}
+
+  register_person:
+    description: "Ask the person in front of the camera who they are, repeat the name back and ask for a yes before enrolling their face under it, then welcome them (stays where it is; the person must face the camera); up to three tries; fails if no confirmed name or no face"
+    steps:
+      - group: Fallback
+        retry: 3
+        steps:
+          - group: Sequence
+            steps:
+              - {node: Speak, ports: {text: "Hi, who are you? Please look at me."}}
+              - {node: WaitForTranscript, ports: {out_text: "{reg_heard}"}}
+              - {node: ExtractAnswer, ports: {kind: name, text: "{reg_heard}", out_value: "{reg_name}"}}
+              - {node: Speak, ports: {text: "Is your name {person}? Please say yes or no.", person: "{reg_name}"}}
+              - {node: WaitForTranscript, ports: {out_text: "{reg_reply}"}}
+              - {node: ExtractAnswer, ports: {kind: "yes", text: "{reg_reply}"}}
+          - group: Sequence       # nothing heard, no name, or "no": apologise, then FAIL so the retry asks again
+            steps:
+              - {node: Speak, ports: {text: "Sorry, let us try again."}}
+              - {node: AlwaysFailure}
+      - group: Fallback
+        retry: 3
+        steps:
+          - {node: EnrollFace, ports: {person: "{reg_name}"}}
+          - group: Sequence       # no face seen in the last 2 s: wait a second and try again
+            steps:
+              - {node: Sleep, ports: {msec: "1000"}}
+              - {node: AlwaysFailure}
+      - {node: Speak, ports: {text: "Hi {person}, welcome!", person: "{reg_name}"}}
+
+  introduce_guest:
+    description: "Say the name and favourite drink remembered for a slot (see meet_guest), e.g. to the host"
+    params: {slot: {default: guest1}}
+    example_args: {slot: guest1}
+    steps:
+      - {node: Speak, ports: {text: "This is {person}", person: "{${slot}_name}"}}
+      - {node: Speak, ports: {text: "Their favourite drink is {person}", person: "{${slot}_drink}"}}
+
+  patrol_laps:
+    description: "Patrol between two named places a number of times ('patrol N times', 'N laps'); laps is a plain whole number 1-10 such as \"4\""
+    params: {first: {required: true}, second: {required: true}, laps: {default: "2"}}
+    example_args: {first: left_room, second: right_room, laps: "3"}
+    steps:
+      - group: Sequence
+        repeat: "${laps}"
+        steps:
+          - {macro: go_to_place, args: {place: "${first}"}}
+          - {macro: go_to_place, args: {place: "${second}"}}
+
+  wait_for_doorbell:
+    description: "Wait for the doorbell / when someone rings the bell (listens for a steady tone, up to 60 s) and say that someone is at the door; fails if it never rings"
+    steps:
+      - {node: DetectSound, ports: {kind: doorbell, timeout_ms: "60000"}}
+      - {macro: say, args: {text: "Someone is at the door"}}
+
+  offer_seat:
+    description: "Look for a free seat (chair, couch, bench), turning up to three quarter turns, and tell the guest to sit there; fails if none is found"
+    steps:
+      - group: Fallback
+        steps:
+          - {node: FindFreeSeat, ports: {out_label: "{seat}"}}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: FindFreeSeat, ports: {out_label: "{seat}"}}
+          - group: Sequence
+            steps:
+              - {node: RotateBy, ports: {radians: "1.57"}}
+              - {node: FindFreeSeat, ports: {out_label: "{seat}"}}
+          - group: Sequence
+            steps:
+              - {node: Speak, ports: {text: "I cannot see a free seat"}}
+              - {node: AlwaysFailure}
+      - {node: Speak, ports: {text: "Please sit on the {person}", person: "{seat}"}}
+
+  receive_guest:
+    description: "Wait for the doorbell, go to the door, ask the guest's name and favourite drink and remember them under a slot (opening the door is NOT automated: a person must open it)"
+    params: {slot: {default: guest1}}
+    example_args: {slot: guest1}
+    steps:
+      - {macro: wait_for_doorbell}
+      - {macro: go_to_place, args: {place: door}}
+      - {macro: meet_guest, args: {slot: "${slot}"}}
+
+  hric_round:
+    description: "Receptionist task for two guests: receive each one, give them a seat, then introduce the first guest to the second"
+    steps:
+      - {macro: receive_guest, args: {slot: guest1}}
+      - {macro: offer_seat}
+      - {macro: receive_guest, args: {slot: guest2}}
+      - {macro: offer_seat}
+      - {macro: introduce_guest, args: {slot: guest1}}
+
+  # ---- walking around ----
+  wander:
+    description: "Walk around: drive about half a metre, turn a little, repeated for a number of legs (1-10). Stops for obstacles (lidar guard) and turns away instead"
+    params: {legs: {default: "4"}}
+    example_args: {legs: "3"}
+    steps:
+      - group: Sequence
+        repeat: "${legs}"
+        steps:
+          - group: Fallback
+            steps:
+              - {node: DriveDistance, ports: {meters: "0.5"}}
+              - {node: RotateBy, ports: {radians: "1.6"}}      # blocked: turn away, the next leg tries again
+          - {node: RotateBy, ports: {radians: "0.5"}}
+
+  wander_until_person:
+    description: "Look for a person; if none is in view, walk a leg and look again, up to a number of tries (1-10); fails if nobody is found"
+    params: {tries: {default: "5"}}
+    example_args: {tries: "3"}
+    steps:
+      - group: Fallback
+        retry: "${tries}"
+        steps:
+          - {node: DetectPerson}
+          - group: Sequence
+            steps:
+              - {macro: wander, args: {legs: "1"}}
+              - {node: AlwaysFailure}
+
+  scout_room:
+    description: "Turn a full circle in quarter turns and say how many people are seen at each stop"
+    steps:
+      - group: Sequence
+        repeat: "4"
+        steps:
+          - {node: RotateBy, ports: {radians: "1.57"}}
+          - {node: CountPeople, ports: {out_count: "{n}"}}
+          - {node: Speak, ports: {text: "I see {person} people", person: "{n}"}}
+
+  describe_person:
+    description: "Find a person and say what colour top they are wearing (a description of the guest by their clothes)"
+    steps:
+      - {macro: find_person}
+      - {node: DescribePerson, ports: {out_text: "{look}"}}
+      - {node: Speak, ports: {text: "I see {person}", person: "{look}"}}
+
+  announce_and_go:
+    description: "Say a sentence while driving to a named place (both at the same time)"
+    params: {place: {required: true}, text: {required: true}}
+    example_args: {place: door, text: "On my way"}
+    steps:
+      - group: Parallel
+        success_count: "2"
+        steps:
+          - {macro: go_to_place, args: {place: "${place}"}}
+          - {macro: say, args: {text: "${text}"}}

@@ -1,0 +1,118 @@
+# Central parameters. Precedence (low -> high): package defaults < this file < launch argument.
+# Edit freely; framework_bringup is installed with symlinks, so no rebuild is needed.
+# Use another folder with:  params_dir:=/path/to/my_param
+# Keys must match a declared parameter of the node (check with: ros2 run framework_bringup check_params).
+
+battery_guard_node:            # halts the plan on a critically low Kobuki battery (thresholds: Kobuki driver defaults, unverified here)
+  ros__parameters:
+    topic: sensors/core
+    low_v: 14.0
+    critical_v: 13.2
+    debounce_sec: 3.0
+    repeat_sec: 5.0
+
+cmd_vel_mux_node:
+  ros__parameters:
+    inputs: [teleop/cmd_vel, odom_extension/cmd_vel, pid_extension/cmd_vel, nav2/cmd_vel]   # highest priority first; teleop = manual override (framework_bringup teleop)
+    output: cmd_vel
+    stamped: false
+    timeout_sec: 0.5        # watchdog: no fresh input -> zero Twist
+    max_linear: 0.3         # hard clamp, m/s
+    max_angular: 0.8        # hard clamp, rad/s
+    rate_hz: 20.0
+    safety_events_enabled: true   # false = bumper/cliff ignored (sim without kobuki msgs)
+    bumper_topic: events/bumper   # Kobuki driver, relative to its namespace
+    cliff_topic: events/cliff
+
+odom_extension_node:
+  ros__parameters:
+    odom_topic: odom
+    cmd_vel_topic: odom_extension/cmd_vel
+    max_linear: 0.2
+    max_angular: 0.6
+    kv: 0.8
+    kw: 1.5
+    default_timeout_sec: 60.0
+    stale_sec: 0.5
+    scan_topic: scan            # lidar guard for DriveDistance/NavigateTo: stop for an obstacle in the travel direction
+    stop_distance: 0.30         # m
+    guard_half_width_deg: 35.0
+    scan_stale_sec: 0.5
+    scan_required: true         # no fresh scan = refuse to drive (real robot). Lidar-less sims (nav_sim has its own scan): set false
+    scan_yaw_offset: 3.1416     # rad, lidar yaw relative to the base forward axis: must match base_to_laser yaw in navigation.yaml
+    turn_clearance: 0.22        # m: RotateBy refuses to turn with anything closer than this in any direction (Kobuki radius 0.18 + margin; 0 = off)
+    rate_hz: 20.0
+    republish_sec: 3.0
+
+pid_extension_node:
+  ros__parameters:
+    odom_topic: odom
+    persons_topic: persons
+    cmd_vel_topic: pid_extension/cmd_vel
+    max_linear: 0.15
+    max_angular: 0.6
+    stale_sec: 0.5
+    lost_sec: 1.0
+    rate_hz: 20.0
+    republish_sec: 3.0
+    scan_topic: scan             # FollowTarget(approach=true) stops for anything closer than stop_distance ahead
+    stop_distance: 0.40          # m (people: keep at least this far)
+    guard_half_width_deg: 35.0
+    scan_stale_sec: 0.5
+    scan_required: true         # no fresh scan = refuse to drive (real robot)
+    scan_yaw_offset: 3.1416     # rad: lidar faces backwards on this robot (= base_to_laser yaw in navigation.yaml)
+    blocked_give_up_sec: 3.0     # blocked this long -> the node fails instead of waiting forever
+
+pose_extension_node:
+  ros__parameters:
+    persons_topic: persons
+    objects_topic: objects
+    window_sec: 1.5
+    max_age_sec: 0.7
+    republish_sec: 3.0
+
+arm_extension_node:         # arm model not fixed yet: group/ee_link/base_frame must be set first
+  ros__parameters:
+    move_group_action: move_action
+    group: ""
+    ee_link: ""
+    base_frame: ""
+    max_velocity_scale: 0.1
+    acceleration_scale: 0.1
+    planning_time: 5.0
+    execute_timeout_sec: 60.0
+    pos_tol: 0.005
+    ori_tol: 0.05
+    workspace_min: [-1.0, -1.0, 0.0]
+    workspace_max: [1.0, 1.0, 1.2]
+    gripper_action: ""      # control_msgs/GripperCommand action name
+    gripper_open: 0.08
+    gripper_closed: 0.0
+    gripper_max_effort: 20.0
+    republish_sec: 3.0
+
+social_extension_node:
+  ros__parameters:
+    speak_service: tts/speak
+    stop_service: tts/stop
+    enroll_service: face/enroll
+    speak_timeout_sec: 30.0
+    enroll_timeout_sec: 10.0
+    transcript_topic: stt/transcript
+    events_topic: audio/events
+    republish_sec: 3.0
+
+nav_extension_node:         # Nav2 BT nodes; needs navigation.launch.py (see docs/navigation.md)
+  ros__parameters:
+    nav2_action: navigate_to_pose
+    base_frame: base        # Kobuki driver frame (not base_link)
+    global_frame: map
+    places_file: ""         # "" = param/places.yaml of framework_bringup
+    map_dir: ~/maps         # SaveMap writes <map_dir>/<file>.yaml/.pgm (plain file names only)
+    default_timeout_sec: 180.0
+    tf_timeout_sec: 0.5
+    initial_pose_topic: initialpose
+    saver_service: map_saver/save_map
+    clear_local_service: local_costmap/clear_entirely_local_costmap
+    clear_global_service: global_costmap/clear_entirely_global_costmap
+    republish_sec: 3.0

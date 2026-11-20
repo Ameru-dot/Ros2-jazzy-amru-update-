@@ -1,0 +1,3 @@
+extension: amru_update_extension
+nodes:
+  PlayAudio: {category: Action, required: [file], optional: [wait], description: "Play one pre-recorded robot clip from the audio folder by file name (for example urdu_greeting.mp3, malay_greeting.mp3, goodbye.wav); only those clips, never a path. Use it in the vaccination-centre macros; to say any other sentence use Speak instead. wait=false returns once playback starts"}

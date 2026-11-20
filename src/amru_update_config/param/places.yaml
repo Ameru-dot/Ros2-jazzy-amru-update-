@@ -1,0 +1,19 @@
+# Named places in the MAP frame for the BT node NavigateToPlace (nav_extension).
+# These coordinates are for the SAMPLE simulator map (maps/test_room.yaml, 12 x 8 m, two rooms joined by a door).
+# Every Amru Update place was checked to be at least 0.9 m from any obstacle on that map.
+# For the real robot: copy places_old_competition_map.yaml here, or read new poses with
+#   ros2 run tf2_ros tf2_echo map base
+# Names: letters, digits, underscore, hyphen. yaw in radians.
+places:
+  # general places (used by the examples in llm_knowledge.md)
+  start: {x: 0.5, y: 0.5, yaw: 0.0}
+  left_room: {x: 3.0, y: 3.0, yaw: 0.0}
+  door: {x: 5.05, y: 2.9, yaw: 0.0}
+  right_room: {x: 9.5, y: 5.5, yaw: 1.57}
+  far_corner: {x: 9.5, y: 0.5, yaw: 3.14}
+  # Amru Update: vaccination-centre scenario
+  home: {x: 0.5, y: 0.5, yaw: 0.0}
+  registration_counter: {x: 2.5, y: 6.0, yaw: 1.57}
+  waiting_area: {x: 1.5, y: 3.5, yaw: 3.14}
+  vaccination_point: {x: 7.0, y: 4.5, yaw: 0.0}
+  treatment_bed: {x: 9.5, y: 2.0, yaw: 0.0}

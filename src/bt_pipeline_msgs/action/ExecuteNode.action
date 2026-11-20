@@ -1,0 +1,10 @@
+string node_id
+string[] port_names
+string[] port_values
+---
+bool success
+string message
+string[] output_names    # values for the node's out_<name> ports (BT blackboard)
+string[] output_values
+---
+string status

@@ -1,0 +1,89 @@
+# Central parameters. Precedence (low -> high): package defaults < this file < launch argument.
+# Edit freely; framework_bringup is installed with symlinks, so no rebuild is needed.
+# Use another folder with:  params_dir:=/path/to/my_param
+# Keys must match a declared parameter of the node (check with: ros2 run framework_bringup check_params).
+
+llm_bridge_node:
+  ros__parameters:
+    server_url: "http://127.0.0.1:8080"
+    model: default
+    temperature: 0.1
+    max_tokens: 768
+    repeat_penalty: 0.0     # > 0 is sent to llama-server; 0 = server default (not needed once the schema key order is right)
+    timeout_sec: 60.0
+    # Failover: ordered list, first = preferred (strong PC, Gemma E4B), then the robot laptop's
+    # small model (Gemma E2B). Unset -> server_url only. Example:
+    #   server_urls: ["http://192.168.1.50:8080", "http://127.0.0.1:8081"]
+    server_urls: [""]          # [""] = unset (an empty YAML list has no type in ROS)
+    connect_timeout_sec: 2.0   # dead host fails fast instead of waiting for timeout_sec
+    failure_threshold: 2       # consecutive failures that open the breaker for an endpoint
+    cooldown_sec: 15.0         # an open endpoint is skipped this long, then probed again
+    json_retries: 1            # re-ask the same endpoint if the reply is not a JSON object
+    probe_period_sec: 5.0      # /health poll of every endpoint (0 = off)
+    startup_grace_sec: 60.0    # no emergency while servers are still loading at boot
+    halt_on_all_down: true     # EMERGENCY: every endpoint down -> call halt_service
+    halt_service: bt_executor/halt
+    use_cluster: true          # add/remove endpoints advertised in cluster/node_info
+    endpoint_kind: llm
+    endpoint_ttl_sec: 4.0      # silent host leaves after this (< scheduler failover_after_sec)
+    static_priority_base: 100  # static urls sort after advertised ones (priority < 100)
+    use_static_urls: true      # false (cluster jobs): rely only on advertised endpoints
+    knowledge_file: "@PARAMS_DIR@/llm_knowledge.md"   # Amru Update: places, languages, vaccine macros
+    api_key_env: LLM_API_KEY   # NAME of the env var holding the llama-server key (not the key)
+    task_system_prompt: ""  # "" = built-in prompt
+
+bt_slm_node:
+  ros__parameters:
+    model_path: ""          # fine-tuned SLM dir; "" = $ROBOCUP_SLM_MODEL or the repo's models/bt-slm if present, else the rule-based generator; "none" = rules only
+    device: cpu
+    max_new_tokens: 768
+    temperature: 0.0
+
+bt_validator_node:
+  ros__parameters:
+    max_depth: 12
+    max_nodes: 160          # a macro like hric_round expands to ~100 nodes; LLM replies are bounded by the schema anyway
+    labels: ""             # comma-separated DetectObject labels to accept until a detector announces its own
+    macros_file: "@PARAMS_DIR@/macros.yaml"   # Amru Update: framework macros + speak_* and vaccine_*
+
+orchestrator_node:
+  ros__parameters:
+    macros_file: "@PARAMS_DIR@/macros.yaml"
+    max_attempts: 3
+    call_timeout_sec: 60.0
+    memory_enabled: false   # WICL task memory (notes/wicl_design.md): retrieve before planning; a retrieved plan is re-validated, never trusted
+    memory_dir: ""          # "" = ~/.local/share/robocup_fw/bt_memory
+    memory_verbose: false   # true: log each retrieval (score, id, whether a memory was offered as the plan)
+    memory_places_file: "@PARAMS_DIR@/places.yaml"
+    memory_k: 3
+    memory_min_score: 0.5
+    memory_embodiment: kobuki
+    memory_use_candidate: true   # false: few-shot examples only, always run the planner
+    max_repairs: 0         # >0: recoveries allowed per task after a failed run; the policy (mode.py RecoveryPolicy) picks retry/replan/go home/ask a human/abort
+
+scene_summarizer_node:
+  ros__parameters:
+    window_sec: 2.0
+    period_sec: 1.0
+
+robot_mode_node:
+  ros__parameters:
+    required: [executor, llm]   # init: these must be heard within init_timeout_sec (add scan on the real robot)
+    init_timeout_sec: 60.0
+    teleop_hold_sec: 1.0        # teleop/cmd_vel seen this recently = a human is driving
+    battery_clear_sec: 15.0     # battery critical clears after this long without a new critical report
+    mission_budget_sec: 0.0     # >0: halt a task that runs longer than this (0 = no budget)
+
+bt_executor_node:
+  ros__parameters:
+    dry_run: true           # default ON: extension nodes only log. Off for one run: ros2 launch ... dry_run:=false (hardware moves!)
+    dry_run_exempt: [social_extension, amru_update_extension]   # sound only, no motion: runs for real even in a dry run
+    auto_run: true          # true: run every valid plan immediately (dry_run: true still keeps the hardware still)
+    tick_hz: 20.0
+    max_runtime_sec: 300.0
+    perception_max_age_sec: 1.0
+    mode_gate: false        # true: refuse bt_executor/run and auto_run unless robot/mode says run_ok (needs robot_mode_node; fails closed)
+    mode_gate_max_age_sec: 3.0
+    groot2: false           # true: serve the running tree to Groot2 (~/Groot2/groot2.sh, Monitor tab, port 1667)
+    groot2_port: 1667
+    nodes_model_path: ""    # e.g. /tmp/bt_nodes_model.xml: the node palette (extension nodes) to load into Groot2 for editing

@@ -1,0 +1,309 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: ros:jazzy
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      ROS_AUTOMATIC_DISCOVERY_RANGE: LOCALHOST
+    steps:
+      - uses: actions/checkout@v4
+
+      # Kobuki driver messages: cmd_vel_mux imports them for the bumper/cliff latch and fails
+      # closed without them. Pinned to the commit the robot workspace uses (~/ros2_ws).
+      - uses: actions/checkout@v4
+        with:
+          repository: kobuki-base/kobuki_ros_interfaces
+          ref: 7711d4fbec13c69bcf6477ce8e446c3ccca33113
+          path: kobuki_ws/src/kobuki_ros_interfaces
+
+      - name: System packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake python3-pip python3-pytest python3-yaml python3-numpy \
+            python3-opencv python3-colcon-common-extensions python3-rosdep \
+            libcurl4-openssl-dev nlohmann-json3-dev libgtest-dev espeak-ng \
+            openssl ros-jazzy-sros2 ros-jazzy-rmw-cyclonedds-cpp \
+            ros-jazzy-nav2-bringup ros-jazzy-slam-toolbox ros-jazzy-cartographer-ros \
+            ros-jazzy-rtabmap-ros ros-jazzy-realsense2-camera \
+            ros-jazzy-depthimage-to-laserscan
+
+      - name: rosdep
+        run: |
+          rosdep init || true
+          rosdep update --rosdistro jazzy
+          rosdep install --from-paths src kobuki_ws/src --ignore-src --rosdistro jazzy -y -r \
+            --skip-keys "sllidar_ros2"
+
+      - name: Build kobuki_ros_interfaces
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cd kobuki_ws && colcon build --event-handlers console_cohesion+
+
+      - name: Build workspace
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          colcon build --event-handlers console_cohesion+
+
+      - name: Python tests
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          ls src/*/test/test_*.py | grep -vE "test_(flake8|pep257|copyright)" \
+            | xargs python3 -m pytest -q -p no:cacheprovider
+
+      - name: C++ tests
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          ./build/bt_executor/test_registry
+          ./build/llm_bridge/test_llama_client
+          ./build/llm_bridge/test_failover
+          ./build/dstar_lite_planner/test_core
+
+      - name: check_params (every node starts and matches param/)
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          ros2 run framework_bringup check_params
+
+      - name: Launch files parse (--show-args)
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          rc=0
+          for f in $(find src launch -name '*.launch.py' | sort); do
+            if ros2 launch "$f" --show-args > /dev/null 2> /tmp/launch_err.txt; then
+              echo "ok   $f"
+            else
+              echo "FAIL $f"; cat /tmp/launch_err.txt; rc=1
+            fi
+          done
+          exit $rc
+
+      - name: Sim - bumper/cliff stop latch
+        timeout-minutes: 3
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/stop_latch_test.py
+
+      - name: Sim - node outputs (extension -> blackboard -> next node)
+        timeout-minutes: 3
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          python3 tools/integration/outputs_test.py
+          python3 tools/integration/groot2_test.py
+          python3 tools/integration/mode_test.py
+          python3 tools/integration/recovery_test.py
+
+      - name: Sim - WaitForTranscript and the stt/capture flag
+        timeout-minutes: 3
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          python3 tools/integration/listen_test.py
+
+      - name: Sim - lidar guard (DriveDistance stops for obstacles)
+        timeout-minutes: 3
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          python3 tools/integration/guard_test.py
+
+      - name: Sim - task rehearsals (GPSR/HRIC node sequences in dry-run)
+        timeout-minutes: 10
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          bash tools/integration/rehearsal.sh
+
+      - name: Sim - BT tree feed for the dashboard (bt/tree + bt/node_status)
+        timeout-minutes: 3
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          python3 tools/integration/tree_feed_test.py
+
+      - name: Sim - battery guard halts the plan on a critical battery
+        timeout-minutes: 3
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          python3 tools/integration/battery_test.py
+
+      - name: Lint (flake8, config in .flake8)
+        run: |
+          apt-get install -y python3-flake8 >/dev/null
+          python3 -m flake8 src tools
+
+      - name: Sim - LLM failover and emergency halt
+        timeout-minutes: 5
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/llm_failover_test.py
+
+      - name: Sim - host joins and leaves (real cluster agent + scheduler + llm_bridge)
+        timeout-minutes: 5
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/cluster_llm_test.py
+
+      - name: Sim - LLM link over TCP (connection reuse, API key accepted and refused)
+        timeout-minutes: 5
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/transport_test.py
+          TRANSPORT_REQUIRE_KEY=1 python3 tools/integration/transport_test.py
+          TRANSPORT_REQUIRE_KEY=1 TRANSPORT_NO_BRIDGE_KEY=1 python3 tools/integration/transport_test.py
+
+      - name: Sim - workspaces (create, discover, join) + SROS2 enforcement
+        timeout-minutes: 5
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/workspace_test.py
+
+      - name: Sim - what the planning LLM receives (prompt contents)
+        timeout-minutes: 3
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/prompt_test.py
+
+      - name: Sim - task lifecycle and repair loop
+        timeout-minutes: 5
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/repair_test.py
+
+      - name: Sim - Nav2 with the D* Lite planner plugin (door route in nav_sim)
+        timeout-minutes: 8
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          python3 tools/integration/nav_planner_test.py dstar_lite
+
+      - name: Sim - task to simulated robot (live moves, dry-run does not)
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source kobuki_ws/install/setup.bash
+          source install/setup.bash
+          export OUT=/tmp/robocup_it ROS_DOMAIN_ID=45
+          # cold CLI/daemon start can take longer than itest's wait and miss /bt/status
+          ros2 daemon start > /dev/null; ros2 topic list > /dev/null
+          SPEC='{"goal":"x","steps":[{"node":"DriveDistance","ports":{"meters":"0.30"}}]}'
+          tools/integration/itest.sh live false "$SPEC" none | tee /tmp/itest_live.txt
+          tools/integration/itest.sh dry true "$SPEC" none | tee /tmp/itest_dry.txt
+          grep -q '"message":"SUCCESS"' /tmp/itest_live.txt
+          grep -q '"message":"dry run"' /tmp/itest_dry.txt
+          # the LLM answers with a macro step: expanded by the orchestrator, validated, executed
+          tools/integration/itest.sh macro false '{"goal":"turn","steps":[{"macro":"turn_around"}]}' none \
+            | tee /tmp/itest_macro.txt
+          grep -q '"message":"SUCCESS"' /tmp/itest_macro.txt
+          python3 -c "
+          l = [x for x in open('/tmp/itest_macro.txt') if x.startswith('pose:')][-1].split()
+          assert 3.0 < float(l[3]) < 3.3, l
+          print('macro turn_around: yaw', l[3])"
+          # pose line: "pose:   x y yaw ..."; live must have moved ~0.30 m, dry-run must stay at 0
+          python3 - <<'PY'
+          def x(path):
+              line = [l for l in open(path) if l.startswith('pose:')][-1]
+              return float(line.split()[1])
+          live, dry = x('/tmp/itest_live.txt'), x('/tmp/itest_dry.txt')
+          print(f'live x={live} dry x={dry}')
+          assert 0.25 < live < 0.35, live
+          assert abs(dry) < 1e-6, dry
+          PY
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            /tmp/robocup_it
+            log/latest_build
+            log/latest_test
+
+  # Humble is a build + unit-test check only: the integration sims above are Jazzy-only
+  # (nav2_params.yaml is generated from the Jazzy Nav2 defaults, Cyclone/SROS2 not tried on Humble).
+  build-test-humble:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    container:
+      image: ros:humble
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      ROS_LOCALHOST_ONLY: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3-colcon-common-extensions python3-rosdep
+
+      - name: rosdep
+        run: |
+          rosdep init || true
+          rosdep update --rosdistro humble
+          rosdep install --from-paths src --ignore-src --rosdistro humble -y -r \
+            --skip-keys "sllidar_ros2"
+
+      - name: Build workspace
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --event-handlers console_cohesion+
+
+      - name: Unit tests
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon test
+          colcon test-result --verbose
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-humble
+          path: |
+            log/latest_build
+            log/latest_test
